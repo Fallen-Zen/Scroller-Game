@@ -6,6 +6,8 @@
 #include "core/AssetRegistry.h"
 #include "core/Logger.h"
 #include "entities/Player.h"
+#include "entities/WalkingEnemy.h"
+#include "entities/FlyingEnemy.h"
 #include "world/Camera.h"
 #include "world/Tilemap.h"
 #include <SDL.h>
@@ -143,6 +145,18 @@ Game::Game(const GameConfig& cfg) {
     auto player = std::make_unique<Player>(100.f, 400.f, m_input);
     m_player    = player.get();
     m_entities.add(std::move(player));
+
+    // ── Enemies ───────────────────────────────────────────────────────────────
+    // WalkingEnemies: placed on the main ground (row 36 → y = 576 - 32 = 544)
+    // and on Platform A (row 30 → y = 480 - 32 = 448).
+    m_entities.add(std::make_unique<WalkingEnemy>(400.f, 544.f));  // ground
+    m_entities.add(std::make_unique<WalkingEnemy>(700.f, 544.f));  // ground
+    m_entities.add(std::make_unique<WalkingEnemy>(192.f, 448.f));  // Platform A
+
+    // FlyingEnemies: positioned in open air above platforms.
+    m_entities.add(std::make_unique<FlyingEnemy>(500.f, 420.f));   // above ground area
+    m_entities.add(std::make_unique<FlyingEnemy>(900.f, 380.f));   // mid-right air
+
     LOG_INFO("Entities spawned: %zu", m_entities.count());
 }
 
