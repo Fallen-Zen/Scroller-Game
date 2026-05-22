@@ -10,9 +10,16 @@
 #pragma once
 #include "AssetRegistry.h"
 #include "InputManager.h"
+#include "entities/EntityManager.h"
+#include "world/Camera.h"
+#include "world/Tilemap.h"
 #include <SDL.h>
 #include <memory>
 #include <string>
+
+// Forward declaration — Game holds a non-owning Player* for camera tracking.
+// EntityManager owns the actual instance via unique_ptr.
+class Player;
 
 // -----------------------------------------------------------------------------
 // GameConfig — plain data struct for startup settings
@@ -99,53 +106,23 @@ private:
     // need a valid SDL_Renderer* before we can build textures).
     std::unique_ptr<AssetRegistry> m_assets;
 
-    // ── Player state ─────────────────────────────────────────────────────────
+    // The game world as a tile grid. 200×45 tiles = 3200×720 px — wider than
+    // the viewport so the camera system (next step) has room to scroll.
+    // Initialised with the first room layout in the Game constructor.
+    Tilemap m_tilemap { 200, 45 };
 
-    // Current position (pixels, top-left of the player rectangle).
-    // Y increases downward — (0,0) is the top-left of the screen.
-    float m_px = 100.f, m_py = 400.f;
+    // Viewport camera. Constructed after m_tilemap so it can query world size.
+    // viewW=1280, viewH=720, worldW/H from the tilemap dimensions.
+    Camera m_camera { 1280, 720, 200 * Tilemap::TILE_SIZE, 45 * Tilemap::TILE_SIZE };
 
-    // Position at the start of the previous physics tick.
-    // Stored so render() can linearly interpolate between old and new positions
-    // to produce motion that looks smooth at any frame rate.
-    float m_ox = 100.f, m_oy = 400.f;
+    // ── Entity system ─────────────────────────────────────────────────────────
 
-    // Current velocity in pixels per second (signed: positive = right / down).
-    float m_vx = 0.f, m_vy = 0.f;
+    // Owns all active game entities (Player, enemies, projectiles…).
+    // Drives saveOldPosition → update → render for each one every tick.
+    EntityManager m_entities;
 
-    // True while the player is resting on a solid surface.
-    // Jumping is only allowed when on the ground (prevents double-jumping).
-    bool m_onGround = false;
-
-    // Last direction the player moved. Persists when they stop so the sprite
-    // keeps facing that way instead of snapping back to a default.
-    // true = facing right, false = facing left.
-    bool m_facingRight = true;
-
-    // ── Debug / observability ─────────────────────────────────────────────────
-
-    // Counts physics ticks since the last in-air log line. Used to throttle
-    // airborne debug output to ~10 lines/second instead of 120.
-    int m_airTicks = 0;
-
-    // m_vy sign from the previous tick — used to detect the arc peak (the
-    // moment vertical velocity crosses from negative/upward to positive/downward).
-    float m_prevVy = 0.f;
-
-    // ── Physics constants ─────────────────────────────────────────────────────
-
-    // Downward acceleration in px/s². Earth is ~9.8 m/s²; games typically use
-    // much higher values so jumps feel snappy rather than floaty.
-    static constexpr float GRAVITY    = 1800.f;
-
-    // Horizontal speed while a direction key is held (px/s).
-    static constexpr float MOVE_SPEED = 220.f;
-
-    // Initial vertical velocity applied when jumping. Negative because Y grows
-    // downward — a negative vy means moving upward.
-    static constexpr float JUMP_VEL   = -600.f;
-
-    // Y coordinate (pixels from top) of the ground surface. The player's top
-    // edge is clamped here on landing, giving the illusion of standing on it.
-    static constexpr int   FLOOR_Y    = 580;
+    // Non-owning pointer to the player entity inside m_entities.
+    // Used by update() to feed the player's world position to the camera each
+    // tick. EntityManager owns the actual instance via unique_ptr.
+    Player* m_player = nullptr;
 };

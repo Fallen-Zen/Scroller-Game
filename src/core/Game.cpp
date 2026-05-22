@@ -5,9 +5,12 @@
 #include "core/Game.h"
 #include "core/AssetRegistry.h"
 #include "core/Logger.h"
+#include "entities/Player.h"
+#include "world/Camera.h"
+#include "world/Tilemap.h"
 #include <SDL.h>
 #include <stdexcept>   // std::runtime_error
-#include <algorithm>   // std::min, std::clamp
+#include <algorithm>   // std::min
 #include <chrono>      // high-resolution wall clock
 
 // std::chrono::steady_clock is a monotonic clock — it never goes backward and
@@ -95,6 +98,52 @@ Game::Game(const GameConfig& cfg) {
 
     // Build all procedural textures. Must come after the renderer is ready.
     m_assets = std::make_unique<AssetRegistry>(m_renderer);
+
+    // ── Room 1 layout ─────────────────────────────────────────────────────────
+    // The map is 200×45 tiles (3200×720 px). We paint it with fill() calls
+    // that work like a "stamp" — each call fills a rectangle of tiles.
+    // Coordinates are (col, row, width, height) in tile units.
+
+    // Ceiling — one tile row across the full width
+    m_tilemap.fill(0,   0,  200, 1, TileType::Ground);
+
+    // Left and right boundary walls
+    m_tilemap.fill(0,   0,  1,  45, TileType::Ground);
+    m_tilemap.fill(199, 0,  1,  45, TileType::Ground);
+
+    // Ground — 9 rows from row 36 to the bottom (36 * 16 = 576px = FLOOR_Y)
+    m_tilemap.fill(0,  36, 200,  9, TileType::Ground);
+
+    // Platform A — visible immediately left of player start, one jump high
+    // Row 30 = y=480px, cols 10-22 = x=160-352px
+    m_tilemap.fill(10, 30, 13,  1, TileType::Platform);
+
+    // Platform B — higher up, reachable from platform A
+    // Row 24 = y=384px, cols 25-40 = x=400-640px
+    m_tilemap.fill(25, 24, 16,  1, TileType::Platform);
+
+    // Platform C — step back down on the right side
+    // Row 29 = y=464px, cols 50-65 = x=800-1040px
+    m_tilemap.fill(50, 29, 16,  1, TileType::Platform);
+
+    // Platform D — off-screen right, visible once camera is added
+    // Row 24 = y=384px, cols 80-95 = x=1280-1520px
+    m_tilemap.fill(80, 24, 16,  1, TileType::Platform);
+
+    // Raised ledge — a thick block to jump onto, off-screen right
+    // cols 110-125, rows 30-35 = a 16-tile-tall solid pillar
+    m_tilemap.fill(110, 30, 15, 6, TileType::Ground);
+
+    LOG_INFO("Room 1 layout built (%dx%d tiles)", m_tilemap.cols(), m_tilemap.rows());
+
+    // ── Spawn entities ────────────────────────────────────────────────────────
+    // Create the player, hand ownership to EntityManager, and keep a raw pointer
+    // for camera tracking. The raw pointer is safe because EntityManager outlives
+    // any individual update/render call and we never store it beyond Game's scope.
+    auto player = std::make_unique<Player>(100.f, 400.f, m_input);
+    m_player    = player.get();
+    m_entities.add(std::move(player));
+    LOG_INFO("Entities spawned: %zu", m_entities.count());
 }
 
 Game::~Game() {
@@ -153,11 +202,9 @@ int Game::run() {
         processEvents();
 
         // Run as many fixed physics ticks as the elapsed time demands.
+        // EntityManager::update() saves each entity's old position internally
+        // before calling update(), so we no longer need to do it here.
         while (accumulator >= FIXED_DT) {
-            // Save the current position as "old" before advancing physics.
-            // render() will interpolate between (m_ox, m_oy) and (m_px, m_py).
-            m_ox = m_px;
-            m_oy = m_py;
             update(FIXED_DT);
             accumulator -= FIXED_DT;
         }
@@ -226,99 +273,26 @@ void Game::processEvents() {
 // =============================================================================
 // Physics update  —  called with a fixed dt every tick
 //
-// A "physics update" moves the simulation one step forward in time. Because dt
-// is always the same value (FIXED_DT), the maths is stable and reproducible.
-//
-// The model here is deliberately simple (no friction, instant direction change)
-// and is a placeholder for a proper character controller later.
+// Game::update() is now thin: it handles game-level actions (pause/quit),
+// delegates all entity physics to EntityManager, then positions the camera.
+// All movement, gravity, and collision logic lives in Player::update() and
+// Entity::resolveX/Y().
 // =============================================================================
 
 void Game::update(double dt) {
-    // chrono uses double for precision, but positions are stored as float.
-    // We cast once here so every calculation below uses float arithmetic.
-    float fdt = static_cast<float>(dt);
-
-    // ── Horizontal velocity ───────────────────────────────────────────────────
-    // Reset to zero each tick so the player stops instantly when no key is held.
-    // This is "digital" movement — no acceleration/deceleration ramp. It feels
-    // responsive but snappy. A proper character controller would add friction.
-    m_vx = 0.f;
-    if (m_input.isHeld(Action::Left))  m_vx -= MOVE_SPEED;
-    if (m_input.isHeld(Action::Right)) m_vx += MOVE_SPEED;
-
-    // Only update facing when actually moving — this way the sprite holds its
-    // last direction when the player stops instead of defaulting to right.
-    if (m_vx > 0.f) m_facingRight = true;
-    if (m_vx < 0.f) m_facingRight = false;
-
-    // ── Jump ─────────────────────────────────────────────────────────────────
-    // isPressed fires only on the first frame the button is down, so the jump
-    // impulse is applied exactly once per press even if the button is held.
-    if (m_input.isPressed(Action::Jump) && m_onGround) {
-        m_vy       = JUMP_VEL;
-        m_onGround = false;
-        m_airTicks = 0;
-        LOG_DEBUG("Jump  | pos=(%.0f, %.0f)  vy=%.0f", m_px, m_py, m_vy);
-    }
-
-    // Pause / quit via the Pause action (Escape or Start button).
+    // Game-level input: Pause / quit. Checked here rather than in Player so
+    // the game can exit cleanly regardless of which entity currently has focus.
     if (m_input.isPressed(Action::Pause))
         m_running = false;
 
-    // ── Gravity ───────────────────────────────────────────────────────────────
-    // Gravity is a constant downward acceleration. Each tick we increase the
-    // vertical velocity by (GRAVITY × dt). Because Y grows downward, adding a
-    // positive value makes the player fall.
-    // Semi-implicit Euler: apply acceleration to velocity, then velocity to
-    // position. This is more stable than "classic" Euler for spring-like forces.
-    m_prevVy  = m_vy;
-    m_vy     += GRAVITY * fdt;
+    // Tick all entities. EntityManager saves each entity's old position first
+    // (for render interpolation) then calls entity->update(tilemap, dt).
+    m_entities.update(m_tilemap, dt);
 
-    // ── Integrate position ───────────────────────────────────────────────────
-    // position += velocity × time  (the fundamental kinematic equation)
-    m_px += m_vx * fdt;
-    m_py += m_vy * fdt;
-
-    // ── Arc peak detection ────────────────────────────────────────────────────
-    // The peak is the tick where m_vy crosses from negative (rising) to
-    // positive (falling). We compare the sign before and after gravity was
-    // applied this tick.
-    if (!m_onGround && m_prevVy < 0.f && m_vy >= 0.f)
-        LOG_DEBUG("Peak  | pos=(%.0f, %.0f)  vy=%.0f→%.0f", m_px, m_py, m_prevVy, m_vy);
-
-    // ── In-air throttled log ──────────────────────────────────────────────────
-    // Log position and velocity while airborne, but only every 12 ticks
-    // (~10 times/sec) to keep the output readable.
-    if (!m_onGround) {
-        ++m_airTicks;
-        if (m_airTicks % 12 == 0)
-            LOG_DEBUG("Air   | pos=(%.0f, %.0f)  vy=%+.1f", m_px, m_py, m_vy);
-    }
-
-    // ── Floor collision ───────────────────────────────────────────────────────
-    // If the player's top-left Y has passed the floor Y, push them back up and
-    // zero vertical velocity so they don't keep accelerating underground.
-    // m_onGround lets the jump check above know a jump is allowed.
-    if (m_py >= static_cast<float>(FLOOR_Y)) {
-        if (!m_onGround)
-            LOG_DEBUG("Land  | pos=(%.0f, %.0f)  impact_vy=%.0f  airTicks=%d",
-                      m_px, m_py, m_vy, m_airTicks);
-        m_py       = static_cast<float>(FLOOR_Y);
-        m_vy       = 0.f;
-        m_onGround = true;
-        m_airTicks = 0;
-    } else {
-        // Once airborne, mark as off-ground so jump can't be retriggered until
-        // the next landing. (This flag was already false after the jump impulse,
-        // but the else keeps it correct if somehow m_py rises above FLOOR_Y.)
-        m_onGround = false;
-    }
-
-    // ── Horizontal boundary ───────────────────────────────────────────────────
-    // Prevent the player leaving the left or right edge of the 1280 px canvas.
-    // 1280 - 32 = 1248: right boundary accounts for the player's 32 px width
-    // so the whole rectangle stays on screen.
-    m_px = std::clamp(m_px, 0.f, 1248.f);
+    // Keep the camera centred on the player. centreX/Y return the world-space
+    // midpoint of the player's AABB — smoother to follow than the top-left.
+    if (m_player)
+        m_camera.update(m_player->centreX(), m_player->centreY(), dt);
 }
 
 
@@ -326,73 +300,26 @@ void Game::update(double dt) {
 // Rendering  —  called once per frame with an interpolation factor
 //
 // Rendering is intentionally separated from physics. The renderer never modifies
-// game state — it only reads it. This separation is what allows us to render at
-// any frame rate while physics ticks at a fixed rate.
+// game state — it only reads it. This separation allows rendering at any frame
+// rate while physics ticks at a fixed rate.
 // =============================================================================
 
 void Game::render(double alpha) {
-    // ── Interpolated draw position ────────────────────────────────────────────
-    // alpha blends between the position at the start of the last tick (m_ox/oy)
-    // and the position at the end of it (m_px/py). The result is where the
-    // player "should" visually be right now, between two physics samples.
-    //
-    // Formula: lerp(a, b, t) = a + (b - a) * t
-    //
-    // Without interpolation, fast-moving objects jitter because the physics
-    // ticks (120 Hz) don't align with display refreshes (60 Hz). With it, the
-    // drawn position updates smoothly every frame.
-    float rx = static_cast<float>(m_ox + (m_px - m_ox) * alpha);
-    float ry = static_cast<float>(m_oy + (m_py - m_oy) * alpha);
-
     // ── Background ────────────────────────────────────────────────────────────
-    // SDL_SetRenderDrawColor sets the RGBA colour for all subsequent draw calls
-    // until changed. Colours are 0–255. This dark-blue clears the whole screen.
     SDL_SetRenderDrawColor(m_renderer, 18, 18, 30, 255);
-    // SDL_RenderClear fills the entire render target with the current draw
-    // colour, erasing whatever was drawn in the previous frame.
     SDL_RenderClear(m_renderer);
 
-    // ── Floor tiles ───────────────────────────────────────────────────────────
-    // Tile the ground texture (16×16) across the bottom of the screen.
-    // Each tile is drawn individually so the tilemap system (Layer 2) can
-    // replace this loop with a proper grid lookup later.
-    SDL_Texture* groundTex = m_assets->get(TextureID::TileGround);
-    constexpr int TILE_SIZE = 16;
-    // Number of tile rows to fill from FLOOR_Y down to the bottom of screen.
-    constexpr int FLOOR_ROWS = (720 - FLOOR_Y) / TILE_SIZE + 1;
-    constexpr int TILE_COLS  = 1280 / TILE_SIZE;
+    // ── Tilemap ───────────────────────────────────────────────────────────────
+    // Pass the interpolated camera offset so only visible tiles are drawn.
+    int camX = m_camera.screenOffsetX(alpha);
+    int camY = m_camera.screenOffsetY(alpha);
+    m_tilemap.render(m_renderer, *m_assets, camX, camY, 1280, 720);
 
-    for (int row = 0; row < FLOOR_ROWS; ++row) {
-        for (int col = 0; col < TILE_COLS; ++col) {
-            SDL_Rect dst {
-                col * TILE_SIZE,
-                FLOOR_Y + row * TILE_SIZE,
-                TILE_SIZE, TILE_SIZE
-            };
-            SDL_RenderCopy(m_renderer, groundTex, nullptr, &dst);
-        }
-    }
-
-    // ── Player body ───────────────────────────────────────────────────────────
-    // SDL_RenderCopy draws a texture stretched to fill the destination rect.
-    // src=nullptr means "use the full texture". The texture was generated by
-    // AssetRegistry::makePlayer() at startup — no file loading required.
-    SDL_Rect playerDst {
-        static_cast<int>(rx),
-        static_cast<int>(ry),
-        32, 48
-    };
-    SDL_RenderCopy(m_renderer, m_assets->get(TextureID::Player), nullptr, &playerDst);
-
-    // ── Facing indicator ("eye") ─────────────────────────────────────────────
-    // Drawn as a separate texture on top of the body so it can later be
-    // replaced with an animated eye or directional indicator independently.
-    SDL_Rect eyeDst {
-        static_cast<int>(rx) + (m_facingRight ? 20 : 4),
-        static_cast<int>(ry) + 10,
-        8, 8
-    };
-    SDL_RenderCopy(m_renderer, m_assets->get(TextureID::PlayerEye), nullptr, &eyeDst);
+    // ── Entities ──────────────────────────────────────────────────────────────
+    // Each entity handles its own interpolation and screen-space conversion
+    // using the camera. Game::render() no longer needs to know about the player
+    // sprite directly — that responsibility belongs to Player::render().
+    m_entities.render(m_renderer, *m_assets, m_camera, alpha);
 
     // ── Present ───────────────────────────────────────────────────────────────
     // Everything drawn above went to an off-screen back buffer. SDL_RenderPresent
