@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | grep -qE '(src|tests)/.*\\.(cpp|h|hpp)$' && cmake -S \"/Users/fallen/Developer/2D Scroller\" -B \"/Users/fallen/Developer/2D Scroller/build-xcode\" -G Xcode 2>/dev/null || true",
+            "timeout": 60,
+            "statusMessage": "Regenerating Xcode project…"
+          }
+        ]
+      }
+    ]
+  }
+}

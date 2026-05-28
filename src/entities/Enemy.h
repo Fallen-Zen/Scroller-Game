@@ -40,6 +40,9 @@ public:
     int  hp()      const { return m_hp; }
     int  maxHp()   const { return m_maxHp; }
 
+    // Returns the world-space AABB used for combat hit detection.
+    SDL_Rect hitbox() const;
+
     // ── Entity interface (still pure virtual) ─────────────────────────────────
 
     void update(const Tilemap& tilemap, double dt) override = 0;

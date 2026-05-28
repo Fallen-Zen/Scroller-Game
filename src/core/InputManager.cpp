@@ -205,9 +205,9 @@ int InputManager::keyToAction(SDL_Keycode sym) const {
     case SDLK_RIGHT: case SDLK_d:                      return static_cast<int>(Action::Right);
     case SDLK_SPACE: case SDLK_w: case SDLK_UP:        return static_cast<int>(Action::Jump);
     case SDLK_z:     case SDLK_j:                      return static_cast<int>(Action::Attack);
-    case SDLK_x:     case SDLK_k: case SDLK_LSHIFT:   return static_cast<int>(Action::Dash);
+    case SDLK_x:     case SDLK_k: case SDLK_LSHIFT:    return static_cast<int>(Action::Dash);
     case SDLK_ESCAPE: case SDLK_RETURN:                return static_cast<int>(Action::Pause);
-    default:                                            return -1;
+    default:                                           return -1;
     }
 }
 

@@ -49,7 +49,7 @@ public:
     // Draw this entity for the current render frame.
     // alpha is the interpolation factor in [0,1] between the previous physics
     // tick (alpha=0) and the current one (alpha=1). Use it to blend between
-    // (m_ox, m_oy) and (m_px, m_py) for visually smooth motion.
+    // (m_ox, m_oy) and (m_posX, m_py) for visually smooth motion.
     virtual void render(SDL_Renderer* renderer,
                         const AssetRegistry& assets,
                         const Camera& camera,
@@ -57,28 +57,28 @@ public:
 
     // ── Accessors ─────────────────────────────────────────────────────────────
 
-    float x()        const { return m_px; }
-    float y()        const { return m_py; }
-    int   width()    const { return m_w; }
-    int   height()   const { return m_h; }
+    float x()        const { return m_posX; }
+    float y()        const { return m_posY; }
+    int   width()    const { return m_width; }
+    int   height()   const { return m_height; }
     bool  onGround() const { return m_onGround; }
 
 protected:
     // ── Physics state ─────────────────────────────────────────────────────────
 
     // Current world-space position (top-left of the AABB), in pixels.
-    float m_px, m_py;
+    float m_posX, m_posY;
 
     // Position at the start of the previous physics tick.
     // Kept in sync by saveOldPosition(). render() blends between these and
     // the current position using the frame's alpha value.
-    float m_ox, m_oy;
+    float m_prevX, m_prevY;
 
     // Current velocity in pixels per second (signed: positive = right / down).
-    float m_vx, m_vy;
+    float m_velX, m_velY;
 
     // Axis-aligned bounding box. Set once in the constructor, not changed.
-    int m_w, m_h;
+    int m_width, m_height;
 
     // True when this entity is resting on a solid surface or platform.
     // Set to true by resolveY() when a floor collision is detected.

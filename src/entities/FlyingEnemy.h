@@ -19,8 +19,8 @@
 class FlyingEnemy : public Enemy {
 public:
     // Sprite: 24 × 20 px — wide and flat, suggesting a bat or hovering drone.
-    static constexpr int W = 24;
-    static constexpr int H = 20;
+    static constexpr int WIDTH  = 24;
+    static constexpr int HEIGHT = 20;
 
     // Spawns at (x, y). The Y coordinate becomes the centre of the hover arc.
     FlyingEnemy(float x, float y);

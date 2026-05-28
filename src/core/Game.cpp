@@ -301,7 +301,7 @@ void Game::update(double dt) {
 
     // Tick all entities. EntityManager saves each entity's old position first
     // (for render interpolation) then calls entity->update(tilemap, dt).
-    m_entities.update(m_tilemap, dt);
+    m_entities.update(m_tilemap, *this->m_player, dt);
 
     // Keep the camera centred on the player. centreX/Y return the world-space
     // midpoint of the player's AABB — smoother to follow than the top-left.

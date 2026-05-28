@@ -20,8 +20,8 @@
 class WalkingEnemy : public Enemy {
 public:
     // Sprite: 28 × 32 px — slightly smaller and squatter than the player.
-    static constexpr int W = 28;
-    static constexpr int H = 32;
+    static constexpr int WIDTH  = 28;
+    static constexpr int HEIGHT = 32;
 
     // Spawns at (x, y) facing right with 3 HP.
     WalkingEnemy(float x, float y);

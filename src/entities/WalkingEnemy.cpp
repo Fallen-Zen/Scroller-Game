@@ -14,64 +14,64 @@
 // =============================================================================
 
 WalkingEnemy::WalkingEnemy(float x, float y)
-    : Enemy(x, y, W, H, /*hp=*/3)
+    : Enemy(x, y, WIDTH, HEIGHT, /*hp=*/50)
 {}
 
 // =============================================================================
 // Update
 //
 // Each tick:
-//   1. Set vx from facing direction.
+//   1. Set velX from facing direction.
 //   2. Ledge detection — if no solid tile below the leading foot, flip.
 //   3. Gravity + integrate Y → resolveY.
-//   4. Integrate X → resolveX. If resolveX zeroed vx, we hit a wall — flip.
+//   4. Integrate X → resolveX. If resolveX zeroed velX, we hit a wall — flip.
 // =============================================================================
 
 void WalkingEnemy::update(const Tilemap& tilemap, double dt) {
     float fdt = static_cast<float>(dt);
 
     // ── Horizontal velocity from patrol direction ─────────────────────────────
-    m_vx = m_facingRight ? WALK_SPEED : -WALK_SPEED;
+    this->m_velX = this->m_facingRight ? WALK_SPEED : -WALK_SPEED;
 
     // ── Ledge detection (only meaningful when grounded) ───────────────────────
     // Check the tile one column ahead of the leading foot.
     // If it is air the enemy would walk off the edge — flip instead.
-    if (m_onGround) {
+    if (this->m_onGround) {
         // The leading foot is one pixel past the front of the sprite.
-        float leadingEdgeX = m_facingRight
-            ? m_px + W          // one px past right edge
-            : m_px - 1.f;       // one px past left edge
+        float leadingEdgeX = this->m_facingRight
+            ? this->m_posX + WIDTH    // one px past right edge
+            : this->m_posX - 1.f;    // one px past left edge
 
         int leadCol = Tilemap::worldToCol(leadingEdgeX);
-        int footRow = Tilemap::worldToRow(m_py + H); // row below feet
+        int footRow = Tilemap::worldToRow(this->m_posY + HEIGHT); // row below feet
 
         bool floorAhead = tilemap.isSolid(leadCol, footRow)
                        || tilemap.isPlatform(leadCol, footRow);
 
         if (!floorAhead) {
-            m_facingRight = !m_facingRight;
-            m_vx = m_facingRight ? WALK_SPEED : -WALK_SPEED;
+            this->m_facingRight = !this->m_facingRight;
+            this->m_velX = this->m_facingRight ? WALK_SPEED : -WALK_SPEED;
         }
     }
 
     // ── Gravity ───────────────────────────────────────────────────────────────
-    m_vy += GRAVITY * fdt;
+    this->m_velY += GRAVITY * fdt;
 
     // ── Integrate Y → resolve vertical collisions ────────────────────────────
-    m_py += m_vy * fdt;
-    resolveY(tilemap);
+    this->m_posY += this->m_velY * fdt;
+    this->resolveY(tilemap);
 
     // ── Integrate X → resolve horizontal collisions ──────────────────────────
-    // Capture vx before resolveX so we can detect a wall hit (resolveX zeros
-    // vx when the entity is snapped back from a solid tile).
-    float intendedVx = m_vx;
-    m_px += m_vx * fdt;
-    resolveX(tilemap);
+    // Capture velX before resolveX so we can detect a wall hit (resolveX zeros
+    // velX when the entity is snapped back from a solid tile).
+    float intendedVelX = this->m_velX;
+    this->m_posX += this->m_velX * fdt;
+    this->resolveX(tilemap);
 
-    // If resolveX zeroed vx while we were moving, we walked into a wall → flip.
-    if (m_onGround && m_vx == 0.f && intendedVx != 0.f) {
-        m_facingRight = !m_facingRight;
-        LOG_DEBUG("WalkEnemy | wall flip at px=%.0f", m_px);
+    // If resolveX zeroed velX while we were moving, we walked into a wall → flip.
+    if (this->m_onGround && this->m_velX == 0.f && intendedVelX != 0.f) {
+        this->m_facingRight = !this->m_facingRight;
+        LOG_DEBUG("WalkEnemy | wall flip at posX=%.0f", this->m_posX);
     }
 }
 
@@ -85,44 +85,45 @@ void WalkingEnemy::render(SDL_Renderer* renderer,
                           double alpha) const
 {
     // Interpolated world position for this render frame.
-    float rx = static_cast<float>(m_ox + (m_px - m_ox) * alpha);
-    float ry = static_cast<float>(m_oy + (m_py - m_oy) * alpha);
+    float rx = static_cast<float>(this->m_prevX + (this->m_posX - this->m_prevX) * alpha);
+    float ry = static_cast<float>(this->m_prevY + (this->m_posY - this->m_prevY) * alpha);
 
     int sx = camera.toScreenX(rx, alpha);
     int sy = camera.toScreenY(ry, alpha);
 
     // ── Body: dark red squat rectangle ───────────────────────────────────────
     SDL_SetRenderDrawColor(renderer, 180, 40, 40, 255);
-    SDL_Rect body { sx, sy, W, H };
+    SDL_Rect body { sx, sy, WIDTH, HEIGHT };
     SDL_RenderFillRect(renderer, &body);
 
     // ── Darker torso stripe ───────────────────────────────────────────────────
     SDL_SetRenderDrawColor(renderer, 130, 25, 25, 255);
-    SDL_Rect stripe { sx + 4, sy + H / 3, W - 8, H / 3 };
+    SDL_Rect stripe { sx + 4, sy + HEIGHT / 3, WIDTH - 8, HEIGHT / 3 };
     SDL_RenderFillRect(renderer, &stripe);
 
     // ── Eyes: bright yellow, positioned based on facing direction ─────────────
     SDL_SetRenderDrawColor(renderer, 240, 220, 0, 255);
-    int eyeX = sx + (m_facingRight ? W - 9 : 3);
+    int eyeX = sx + (this->m_facingRight ? WIDTH - 9 : 3);
     SDL_Rect eye { eyeX, sy + 6, 6, 6 };
     SDL_RenderFillRect(renderer, &eye);
 
     // ── HP bar above the sprite ───────────────────────────────────────────────
     // Only draw if damaged so healthy enemies don't show a bar.
-    if (m_hp < m_maxHp) {
-        int barW = W;
-        int barH = 3;
-        int barY = sy - 6;
+    if (this->m_hp < this->m_maxHp) {
+        static constexpr int BAR_W   = WIDTH;
+        static constexpr int BAR_H   = 6;
+        static constexpr int BAR_GAP = 10;  // pixels above the sprite top
+        const int barY = sy - BAR_GAP - BAR_H;
 
         // Background (empty bar)
-        SDL_SetRenderDrawColor(renderer, 60, 0, 0, 255);
-        SDL_Rect bg { sx, barY, barW, barH };
+        SDL_SetRenderDrawColor(renderer, 100, 20, 20, 255);
+        SDL_Rect bg { sx, barY, BAR_W, BAR_H };
         SDL_RenderFillRect(renderer, &bg);
 
-        // Filled portion
-        SDL_SetRenderDrawColor(renderer, 220, 40, 40, 255);
-        int filled = (m_hp * barW) / m_maxHp;
-        SDL_Rect fill { sx, barY, filled, barH };
+        // Filled portion — scales with remaining HP
+        SDL_SetRenderDrawColor(renderer, 255, 80, 80, 255);
+        int filled = (this->m_hp * BAR_W) / this->m_maxHp;
+        SDL_Rect fill { sx, barY, filled, BAR_H };
         SDL_RenderFillRect(renderer, &fill);
     }
 
