@@ -51,13 +51,13 @@ Game::Game(const GameConfig& cfg) {
     // SDL_WINDOW_RESIZABLE — let the user drag the window edges; the logical
     //                        size set below keeps the game resolution fixed.
     Uint32 winFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
-    m_window = SDL_CreateWindow(
+    this->m_window = SDL_CreateWindow(
         cfg.title.c_str(),
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, // centre on screen
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         cfg.width, cfg.height,
         winFlags
     );
-    if (!m_window) {
+    if (!this->m_window) {
         LOG_ERROR("SDL_CreateWindow failed: %s", SDL_GetError());
         throw std::runtime_error(SDL_GetError());
     }
@@ -75,15 +75,15 @@ Game::Game(const GameConfig& cfg) {
 
     // -1 tells SDL to pick the first available rendering driver (usually Metal
     // on macOS, Direct3D 11 on Windows). Pass an index to pick a specific one.
-    m_renderer = SDL_CreateRenderer(m_window, -1, rendFlags);
-    if (!m_renderer) {
+    this->m_renderer = SDL_CreateRenderer(this->m_window, -1, rendFlags);
+    if (!this->m_renderer) {
         LOG_ERROR("SDL_CreateRenderer failed: %s", SDL_GetError());
         throw std::runtime_error(SDL_GetError());
     }
 
     // Log which renderer SDL picked so it's easy to verify Metal/D3D is active.
     SDL_RendererInfo info;
-    if (SDL_GetRendererInfo(m_renderer, &info) == 0) {
+    if (SDL_GetRendererInfo(this->m_renderer, &info) == 0) {
         LOG_INFO("Renderer: %s (%s, vsync=%s)",
             info.name,
             (info.flags & SDL_RENDERER_ACCELERATED) ? "accelerated" : "software",
@@ -95,11 +95,15 @@ Game::Game(const GameConfig& cfg) {
     // window size. All draw calls use (cfg.width × cfg.height) coordinates;
     // SDL scales and letter-boxes automatically when the window is resized.
     // This means the game always "thinks" it is 1280×720 even on a 4K display.
-    SDL_RenderSetLogicalSize(m_renderer, cfg.width, cfg.height);
+    SDL_RenderSetLogicalSize(this->m_renderer, cfg.width, cfg.height);
     LOG_DEBUG("Logical resolution locked to %dx%d", cfg.width, cfg.height);
 
     // Build all procedural textures. Must come after the renderer is ready.
-    m_assets = std::make_unique<AssetRegistry>(m_renderer);
+    this->m_assets = std::make_unique<AssetRegistry>(this->m_renderer);
+
+    // Initialise audio and load sound effects. Must come after SDL_Init which
+    // starts the audio subsystem, and before entities are spawned.
+    this->m_audio = std::make_unique<AudioManager>();
 
     // ── Room 1 layout ─────────────────────────────────────────────────────────
     // The map is 200×45 tiles (3200×720 px). We paint it with fill() calls
@@ -107,57 +111,57 @@ Game::Game(const GameConfig& cfg) {
     // Coordinates are (col, row, width, height) in tile units.
 
     // Ceiling — one tile row across the full width
-    m_tilemap.fill(0,   0,  200, 1, TileType::Ground);
+    this->m_tilemap.fill(0,   0,  200, 1, TileType::Ground);
 
     // Left and right boundary walls
-    m_tilemap.fill(0,   0,  1,  45, TileType::Ground);
-    m_tilemap.fill(199, 0,  1,  45, TileType::Ground);
+    this->m_tilemap.fill(0,   0,  1,  45, TileType::Ground);
+    this->m_tilemap.fill(199, 0,  1,  45, TileType::Ground);
 
     // Ground — 9 rows from row 36 to the bottom (36 * 16 = 576px = FLOOR_Y)
-    m_tilemap.fill(0,  36, 200,  9, TileType::Ground);
+    this->m_tilemap.fill(0,  36, 200,  9, TileType::Ground);
 
     // Platform A — visible immediately left of player start, one jump high
     // Row 30 = y=480px, cols 10-22 = x=160-352px
-    m_tilemap.fill(10, 30, 13,  1, TileType::Platform);
+    this->m_tilemap.fill(10, 30, 13,  1, TileType::Platform);
 
     // Platform B — higher up, reachable from platform A
     // Row 24 = y=384px, cols 25-40 = x=400-640px
-    m_tilemap.fill(25, 24, 16,  1, TileType::Platform);
+    this->m_tilemap.fill(25, 24, 16,  1, TileType::Platform);
 
     // Platform C — step back down on the right side
     // Row 29 = y=464px, cols 50-65 = x=800-1040px
-    m_tilemap.fill(50, 29, 16,  1, TileType::Platform);
+    this->m_tilemap.fill(50, 29, 16,  1, TileType::Platform);
 
     // Platform D — off-screen right, visible once camera is added
     // Row 24 = y=384px, cols 80-95 = x=1280-1520px
-    m_tilemap.fill(80, 24, 16,  1, TileType::Platform);
+    this->m_tilemap.fill(80, 24, 16,  1, TileType::Platform);
 
     // Raised ledge — a thick block to jump onto, off-screen right
     // cols 110-125, rows 30-35 = a 16-tile-tall solid pillar
-    m_tilemap.fill(110, 30, 15, 6, TileType::Ground);
+    this->m_tilemap.fill(110, 30, 15, 6, TileType::Ground);
 
-    LOG_INFO("Room 1 layout built (%dx%d tiles)", m_tilemap.cols(), m_tilemap.rows());
+    LOG_INFO("Room 1 layout built (%dx%d tiles)", this->m_tilemap.cols(), this->m_tilemap.rows());
 
     // ── Spawn entities ────────────────────────────────────────────────────────
     // Create the player, hand ownership to EntityManager, and keep a raw pointer
     // for camera tracking. The raw pointer is safe because EntityManager outlives
     // any individual update/render call and we never store it beyond Game's scope.
-    auto player = std::make_unique<Player>(100.f, 400.f, m_input);
-    m_player    = player.get();
-    m_entities.add(std::move(player));
+    auto player    = std::make_unique<Player>(100.f, 400.f, this->m_input, *this->m_audio);
+    this->m_player = player.get();
+    this->m_entities.add(std::move(player));
 
     // ── Enemies ───────────────────────────────────────────────────────────────
     // WalkingEnemies: placed on the main ground (row 36 → y = 576 - 32 = 544)
     // and on Platform A (row 30 → y = 480 - 32 = 448).
-    m_entities.add(std::make_unique<WalkingEnemy>(400.f, 544.f));  // ground
-    m_entities.add(std::make_unique<WalkingEnemy>(700.f, 544.f));  // ground
-    m_entities.add(std::make_unique<WalkingEnemy>(192.f, 448.f));  // Platform A
+    this->m_entities.add(std::make_unique<WalkingEnemy>(400.f, 544.f));  // ground
+    this->m_entities.add(std::make_unique<WalkingEnemy>(700.f, 544.f));  // ground
+    this->m_entities.add(std::make_unique<WalkingEnemy>(192.f, 448.f));  // Platform A
 
     // FlyingEnemies: positioned in open air above platforms.
-    m_entities.add(std::make_unique<FlyingEnemy>(500.f, 420.f));   // above ground area
-    m_entities.add(std::make_unique<FlyingEnemy>(900.f, 380.f));   // mid-right air
+    this->m_entities.add(std::make_unique<FlyingEnemy>(500.f, 420.f));   // above ground area
+    this->m_entities.add(std::make_unique<FlyingEnemy>(900.f, 380.f));   // mid-right air
 
-    LOG_INFO("Entities spawned: %zu", m_entities.count());
+    LOG_INFO("Entities spawned: %zu", this->m_entities.count());
 }
 
 Game::~Game() {
@@ -165,8 +169,8 @@ Game::~Game() {
     // renderer before the window is required — the renderer holds references
     // to GPU resources tied to the window's surface.
     LOG_INFO("Shutting down");
-    if (m_renderer) SDL_DestroyRenderer(m_renderer);
-    if (m_window)   SDL_DestroyWindow(m_window);
+    if (this->m_renderer) SDL_DestroyRenderer(this->m_renderer);
+    if (this->m_window)   SDL_DestroyWindow(this->m_window);
 
     // SDL_Quit shuts down every subsystem started by SDL_Init and releases
     // all internal SDL resources. Nothing SDL-related should be called after
@@ -193,13 +197,13 @@ Game::~Game() {
 // =============================================================================
 
 int Game::run() {
-    m_running = true;
+    this->m_running = true;
     LOG_INFO("Main loop started (fixed timestep: %.0f Hz)", 1.0 / FIXED_DT);
 
     auto   previous    = Clock::now(); // wall-clock time at the last frame
     double accumulator = 0.0;          // un-simulated time carried between frames
 
-    while (m_running) {
+    while (this->m_running) {
         auto   current = Clock::now();
         // duration<double> converts the tick difference to fractional seconds.
         double elapsed = std::chrono::duration<double>(current - previous).count();
@@ -213,13 +217,11 @@ int Game::run() {
         accumulator += std::min(elapsed, 0.25);
 
         // Poll OS events first so input flags are up to date before physics runs.
-        processEvents();
+        this->processEvents();
 
         // Run as many fixed physics ticks as the elapsed time demands.
-        // EntityManager::update() saves each entity's old position internally
-        // before calling update(), so we no longer need to do it here.
         while (accumulator >= FIXED_DT) {
-            update(FIXED_DT);
+            this->update(FIXED_DT);
             accumulator -= FIXED_DT;
         }
 
@@ -229,11 +231,11 @@ int Game::run() {
         // Passing it to render() lets it draw the player at a fractional
         // position between the last two ticks, which looks smooth.
         double alpha = accumulator / FIXED_DT;
-        render(alpha);
+        this->render(alpha);
 
         // Clear one-frame edge signals (justPressed / justReleased) so they
         // don't carry over and fire again on the next frame.
-        m_input.endFrame();
+        this->m_input.endFrame();
     }
 
     return 0;
@@ -248,8 +250,8 @@ int Game::run() {
 // returning 0 when the queue is empty.
 //
 // Rather than acting on events directly inside update(), we translate them into
-// simple boolean flags (m_left, m_right, m_running). This keeps input handling
-// decoupled from physics — update() only reads flags, not SDL types.
+// simple boolean flags. This keeps input handling decoupled from physics —
+// update() only reads flags, not SDL types.
 // =============================================================================
 
 void Game::processEvents() {
@@ -257,16 +259,14 @@ void Game::processEvents() {
     while (SDL_PollEvent(&e)) {
         // Let InputManager inspect every event first so it can update its
         // keyboard and gamepad state before we read it in update().
-        m_input.handleEvent(e);
+        this->m_input.handleEvent(e);
 
-        // Game-level events that aren't Actions (window lifecycle, quit signal)
-        // are still handled directly here.
         switch (e.type) {
 
         // SDL_QUIT is sent when the user clicks the window's × button or the
         // OS asks the application to terminate (e.g. Cmd+Q on macOS).
         case SDL_QUIT:
-            m_running = false;
+            this->m_running = false;
             break;
 
         // SDL_WINDOWEVENT bundles several sub-events (resize, focus, close…).
@@ -274,7 +274,7 @@ void Game::processEvents() {
         // platforms in addition to (or instead of) SDL_QUIT.
         case SDL_WINDOWEVENT:
             if (e.window.event == SDL_WINDOWEVENT_CLOSE)
-                m_running = false;
+                this->m_running = false;
             break;
 
         default:
@@ -287,7 +287,7 @@ void Game::processEvents() {
 // =============================================================================
 // Physics update  —  called with a fixed dt every tick
 //
-// Game::update() is now thin: it handles game-level actions (pause/quit),
+// Game::update() is thin: it handles game-level actions (pause/quit),
 // delegates all entity physics to EntityManager, then positions the camera.
 // All movement, gravity, and collision logic lives in Player::update() and
 // Entity::resolveX/Y().
@@ -296,17 +296,23 @@ void Game::processEvents() {
 void Game::update(double dt) {
     // Game-level input: Pause / quit. Checked here rather than in Player so
     // the game can exit cleanly regardless of which entity currently has focus.
-    if (m_input.isPressed(Action::Pause))
-        m_running = false;
+    if (this->m_input.isPressed(Action::Pause))
+        this->m_running = false;
 
     // Tick all entities. EntityManager saves each entity's old position first
     // (for render interpolation) then calls entity->update(tilemap, dt).
-    m_entities.update(m_tilemap, *this->m_player, dt);
+    this->m_entities.update(this->m_tilemap, *this->m_player, *this->m_audio, dt);
+
+    // End the game when the player runs out of HP.
+    if (this->m_player->isDead()) {
+        LOG_INFO("Player died — game over");
+        this->m_running = false;
+    }
 
     // Keep the camera centred on the player. centreX/Y return the world-space
     // midpoint of the player's AABB — smoother to follow than the top-left.
-    if (m_player)
-        m_camera.update(m_player->centreX(), m_player->centreY(), dt);
+    if (this->m_player)
+        this->m_camera.update(this->m_player->centreX(), this->m_player->centreY(), dt);
 }
 
 
@@ -320,25 +326,25 @@ void Game::update(double dt) {
 
 void Game::render(double alpha) {
     // ── Background ────────────────────────────────────────────────────────────
-    SDL_SetRenderDrawColor(m_renderer, 18, 18, 30, 255);
-    SDL_RenderClear(m_renderer);
+    SDL_SetRenderDrawColor(this->m_renderer, 18, 18, 30, 255);
+    SDL_RenderClear(this->m_renderer);
 
     // ── Tilemap ───────────────────────────────────────────────────────────────
     // Pass the interpolated camera offset so only visible tiles are drawn.
-    int camX = m_camera.screenOffsetX(alpha);
-    int camY = m_camera.screenOffsetY(alpha);
-    m_tilemap.render(m_renderer, *m_assets, camX, camY, 1280, 720);
+    int camX = this->m_camera.screenOffsetX(alpha);
+    int camY = this->m_camera.screenOffsetY(alpha);
+    this->m_tilemap.render(this->m_renderer, *this->m_assets, camX, camY, 1280, 720);
 
     // ── Entities ──────────────────────────────────────────────────────────────
     // Each entity handles its own interpolation and screen-space conversion
     // using the camera. Game::render() no longer needs to know about the player
     // sprite directly — that responsibility belongs to Player::render().
-    m_entities.render(m_renderer, *m_assets, m_camera, alpha);
+    this->m_entities.render(this->m_renderer, *this->m_assets, this->m_camera, alpha);
 
     // ── Present ───────────────────────────────────────────────────────────────
     // Everything drawn above went to an off-screen back buffer. SDL_RenderPresent
     // swaps back and front buffers so the finished frame becomes visible on
     // screen. With vsync enabled this call also blocks until the monitor's next
     // refresh, which is what caps the frame rate and prevents tearing.
-    SDL_RenderPresent(m_renderer);
+    SDL_RenderPresent(this->m_renderer);
 }

@@ -2,8 +2,10 @@
 // Player.cpp
 // =============================================================================
 
+#include <algorithm>
 #include "entities/Player.h"
 #include "core/AssetRegistry.h"
+#include "core/AudioManager.h"
 #include "core/InputManager.h"
 #include "core/Logger.h"
 #include "world/Camera.h"
@@ -14,9 +16,10 @@
 // Construction
 // =============================================================================
 
-Player::Player(float startX, float startY, const InputManager& input)
+Player::Player(float startX, float startY, const InputManager& input, AudioManager& audio)
     : Entity(startX, startY, WIDTH, HEIGHT)
     , m_input(input)
+    , m_audio(audio)
 {}
 
 // =============================================================================
@@ -52,6 +55,7 @@ void Player::update(const Tilemap& tilemap, double dt) {
         this->m_velY     = JUMP_VEL;
         this->m_onGround = false;
         this->m_airTicks = 0;
+        this->m_audio.play(SoundID::Jump);
         LOG_DEBUG("Jump  | pos=(%.0f, %.0f)  velY=%.0f", this->m_posX, this->m_posY, this->m_velY);
     }
 
@@ -61,6 +65,7 @@ void Player::update(const Tilemap& tilemap, double dt) {
     if (this->m_input.isPressed(Action::Attack) && !this->m_isAttacking) {
         this->m_isAttacking = true;
         this->m_attackTicks = ATTACK_DURATION;
+        this->m_audio.play(SoundID::Attack);
     }
 
     // Count down the active attack. When the timer expires, clear the flag so
@@ -71,6 +76,10 @@ void Player::update(const Tilemap& tilemap, double dt) {
             this->m_isAttacking = false;
         }
     }
+
+    // ── Invincibility frames ──────────────────────────────────────────────
+    if (this->m_invincibleTicks > 0)
+        this->m_invincibleTicks--;
 
     // ── Gravity (semi-implicit Euler) ─────────────────────────────────────────
     // Accumulate velocity first, then integrate position below. Semi-implicit
@@ -150,6 +159,31 @@ void Player::render(SDL_Renderer* renderer,
         SDL_SetRenderDrawColor(renderer, 255, 220, 0, 255);
         SDL_RenderDrawRect(renderer, &hb);
     }
+
+    // ── HUD: player HP bar ────────────────────────────────────────────────────
+    // Drawn in fixed screen space — no camera conversion. Always visible in the
+    // top-left corner regardless of where the player is in the world.
+    {
+        static constexpr int BAR_X = 20;   // pixels from left edge
+        static constexpr int BAR_Y = 20;   // pixels from top edge
+        static constexpr int BAR_W = 120;  // full bar width at max HP
+        static constexpr int BAR_H = 12;   // bar height
+
+        // Background — dark red, shows the "missing" HP portion
+        SDL_SetRenderDrawColor(renderer, 80, 20, 20, 255);
+        SDL_Rect bg { BAR_X, BAR_Y, BAR_W, BAR_H };
+        SDL_RenderFillRect(renderer, &bg);
+
+        // Filled portion — bright red, scales with current HP
+        SDL_SetRenderDrawColor(renderer, 220, 60, 60, 255);
+        int filled = (this->m_hp * BAR_W) / this->m_maxHp;
+        SDL_Rect fill { BAR_X, BAR_Y, filled, BAR_H };
+        SDL_RenderFillRect(renderer, &fill);
+
+        // Outline — thin white border so the bar is visible on any background
+        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+        SDL_RenderDrawRect(renderer, &bg);
+    }
 }
 
 // =============================================================================
@@ -166,4 +200,12 @@ SDL_Rect Player::attackHitbox() const {
         : static_cast<int>(this->m_posX) - this->ATTACK_W; // left of player body
     const int y = static_cast<int>(this->m_posY) + (this->HEIGHT - ATTACK_H) / 2;
     return SDL_Rect{ x, y, this->ATTACK_W, this->ATTACK_H };
+}
+
+void Player::takeDamage(int amount) {
+    if (this->m_invincibleTicks > 0) return;
+    this->m_hp = std::max(0, this->m_hp - amount);
+    this->m_invincibleTicks = IFRAMES_DURATION;
+    this->m_audio.play(SoundID::PlayerHurt);
+    LOG_DEBUG("Player hit | hp=%d/%d", this->m_hp, this->m_maxHp);
 }

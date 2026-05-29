@@ -17,7 +17,7 @@ Tilemap::Tilemap(int cols, int rows)
     , m_tiles(cols * rows, TileType::Air)  // initialise every cell to Air
 {
     LOG_DEBUG("Tilemap created: %dx%d tiles (%dx%d px)",
-              cols, rows, widthPx(), heightPx());
+              cols, rows, this->widthPx(), this->heightPx());
 }
 
 // =============================================================================
@@ -26,27 +26,27 @@ Tilemap::Tilemap(int cols, int rows)
 
 TileType Tilemap::get(int col, int row) const {
     // Return Air for out-of-bounds so callers can query freely near edges
-    // without crashing. Physics code in particular queries tiles at player
+    // without crashing. Physics code in particular queries tiles at entity
     // corners and doesn't want to bounds-check every time.
-    if (!isInBounds(col, row)) return TileType::Air;
-    return m_tiles[idx(col, row)];
+    if (!this->isInBounds(col, row)) return TileType::Air;
+    return this->m_tiles[this->idx(col, row)];
 }
 
 void Tilemap::set(int col, int row, TileType type) {
-    if (!isInBounds(col, row)) return;
-    m_tiles[idx(col, row)] = type;
+    if (!this->isInBounds(col, row)) return;
+    this->m_tiles[this->idx(col, row)] = type;
 }
 
 void Tilemap::fill(int col, int row, int w, int h, TileType type) {
     // Clamp the fill region to map bounds so callers don't need to be precise.
     int c0 = std::max(col, 0);
     int r0 = std::max(row, 0);
-    int c1 = std::min(col + w, m_cols);
-    int r1 = std::min(row + h, m_rows);
+    int c1 = std::min(col + w, this->m_cols);
+    int r1 = std::min(row + h, this->m_rows);
 
     for (int r = r0; r < r1; ++r)
         for (int c = c0; c < c1; ++c)
-            m_tiles[idx(c, r)] = type;
+            this->m_tiles[this->idx(c, r)] = type;
 }
 
 // =============================================================================
@@ -54,19 +54,19 @@ void Tilemap::fill(int col, int row, int w, int h, TileType type) {
 // =============================================================================
 
 bool Tilemap::isInBounds(int col, int row) const {
-    return col >= 0 && col < m_cols && row >= 0 && row < m_rows;
+    return col >= 0 && col < this->m_cols && row >= 0 && row < this->m_rows;
 }
 
 bool Tilemap::isSolid(int col, int row) const {
     // Out-of-bounds tiles (past map edges) are treated as solid walls so
     // entities can't walk off the edge of the world.
-    if (!isInBounds(col, row)) return true;
-    return m_tiles[idx(col, row)] == TileType::Ground;
+    if (!this->isInBounds(col, row)) return true;
+    return this->m_tiles[this->idx(col, row)] == TileType::Ground;
 }
 
 bool Tilemap::isPlatform(int col, int row) const {
-    if (!isInBounds(col, row)) return false;
-    return m_tiles[idx(col, row)] == TileType::Platform;
+    if (!this->isInBounds(col, row)) return false;
+    return this->m_tiles[this->idx(col, row)] == TileType::Platform;
 }
 
 // =============================================================================
@@ -82,14 +82,14 @@ void Tilemap::render(SDL_Renderer* renderer, const AssetRegistry& assets,
     // expand by one tile on each side to avoid pop-in at the screen edge.
     //
     // Example: cameraX=24, TILE_SIZE=16 → firstCol = 24/16 - 1 = 0 (clamped)
-    int firstCol = std::max(0,       cameraX / TILE_SIZE - 1);
-    int lastCol  = std::min(m_cols,  (cameraX + viewW) / TILE_SIZE + 2);
-    int firstRow = std::max(0,       cameraY / TILE_SIZE - 1);
-    int lastRow  = std::min(m_rows,  (cameraY + viewH) / TILE_SIZE + 2);
+    int firstCol = std::max(0,            cameraX / TILE_SIZE - 1);
+    int lastCol  = std::min(this->m_cols, (cameraX + viewW) / TILE_SIZE + 2);
+    int firstRow = std::max(0,            cameraY / TILE_SIZE - 1);
+    int lastRow  = std::min(this->m_rows, (cameraY + viewH) / TILE_SIZE + 2);
 
     for (int row = firstRow; row < lastRow; ++row) {
         for (int col = firstCol; col < lastCol; ++col) {
-            TileType type = get(col, row);
+            TileType type = this->get(col, row);
 
             // Air tiles are invisible — nothing to draw.
             if (type == TileType::Air) continue;

@@ -9,6 +9,7 @@
 
 #pragma once
 #include "AssetRegistry.h"
+#include "AudioManager.h"
 #include "InputManager.h"
 #include "entities/EntityManager.h"
 #include "world/Camera.h"
@@ -105,6 +106,11 @@ private:
     // (member variables initialise before the constructor body runs, but we
     // need a valid SDL_Renderer* before we can build textures).
     std::unique_ptr<AssetRegistry> m_assets;
+
+    // Owns all loaded sound effects and the SDL_mixer device. Constructed after
+    // SDL_Init (which starts the audio subsystem) and before entities spawn so
+    // they can receive a reference at construction time.
+    std::unique_ptr<AudioManager> m_audio;
 
     // The game world as a tile grid. 200×45 tiles = 3200×720 px — wider than
     // the viewport so the camera system (next step) has room to scroll.

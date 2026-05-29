@@ -45,6 +45,10 @@ file(GLOB_RECURSE GAME_HEADERS  CONFIGURE_DEPENDS "src/*.h")
 # executable target is purely for IDE visibility.
 add_executable(Scroller ${GAME_SOURCES} ${GAME_HEADERS})
 
+# Mirror the src/ directory structure into Xcode/VS project groups so files
+# appear under core/, entities/, world/ instead of a flat "Header Files" list.
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "src" FILES ${GAME_SOURCES} ${GAME_HEADERS})
+
 target_include_directories(Scroller PRIVATE src)
 
 target_link_libraries(Scroller PRIVATE SDL2::SDL2 SDL2_mixer)
@@ -58,6 +62,28 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:SDL2::SDL2>
             $<TARGET_FILE_DIR:Scroller>
+    )
+endif()
+
+# ── Copy assets into the build output ────────────────────────────────────────
+# On macOS, assets go into Contents/Resources/ (the proper bundle location).
+# Xcode only codesigns Contents/MacOS/ — putting WAVs there causes signing
+# failures. SDL_GetBasePath() returns Contents/MacOS/, so AudioManager adjusts
+# the path with "../Resources/" on Apple platforms.
+# On Windows/Linux, assets land next to the binary as usual.
+if(APPLE)
+    add_custom_command(TARGET Scroller POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+            "$<TARGET_BUNDLE_CONTENT_DIR:Scroller>/Resources/assets"
+        COMMENT "Copying assets to macOS bundle Resources"
+    )
+else()
+    add_custom_command(TARGET Scroller POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:Scroller>/assets"
+        COMMENT "Copying assets to build output directory"
     )
 endif()
 

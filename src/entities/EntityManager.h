@@ -28,6 +28,7 @@
 class Entity;
 class Tilemap;
 class AssetRegistry;
+class AudioManager;
 class Camera;
 struct SDL_Renderer;
 class Player;
@@ -41,7 +42,8 @@ public:
     // Advance all entities by dt seconds (the fixed physics timestep).
     // Calls saveOldPosition() on each entity before update() so that render()
     // has both the old and new positions available for interpolation.
-    void update(const Tilemap& tilemap, const Player& player, double dt);
+    // audio is used to trigger enemy death and player hurt sounds.
+    void update(const Tilemap& tilemap, Player& player, AudioManager& audio, double dt);
 
     // Draw all entities in insertion order.
     // alpha is the fractional tick blend factor passed down from Game::render().

@@ -20,12 +20,12 @@ AssetRegistry::AssetRegistry(SDL_Renderer* renderer)
     // If any painter returns nullptr, upload() has already logged the error —
     // we throw so Game's constructor fails cleanly rather than running with a
     // broken texture set.
-    m_textures[static_cast<int>(TextureID::Player)]     = makePlayer();
-    m_textures[static_cast<int>(TextureID::PlayerEye)]  = makePlayerEye();
-    m_textures[static_cast<int>(TextureID::TileGround)] = makeTileGround();
+    this->m_textures[static_cast<int>(TextureID::Player)]     = this->makePlayer();
+    this->m_textures[static_cast<int>(TextureID::PlayerEye)]  = this->makePlayerEye();
+    this->m_textures[static_cast<int>(TextureID::TileGround)] = this->makeTileGround();
 
     for (int i = 0; i < N; ++i) {
-        if (!m_textures[i])
+        if (!this->m_textures[i])
             throw std::runtime_error("AssetRegistry: failed to create texture id " + std::to_string(i));
     }
 
@@ -35,9 +35,9 @@ AssetRegistry::AssetRegistry(SDL_Renderer* renderer)
 AssetRegistry::~AssetRegistry() {
     // Destroy in reverse order (mirrors construction, good habit).
     for (int i = N - 1; i >= 0; --i) {
-        if (m_textures[i]) {
-            SDL_DestroyTexture(m_textures[i]);
-            m_textures[i] = nullptr;
+        if (this->m_textures[i]) {
+            SDL_DestroyTexture(this->m_textures[i]);
+            this->m_textures[i] = nullptr;
         }
     }
     LOG_DEBUG("AssetRegistry: all textures destroyed");
@@ -48,7 +48,7 @@ AssetRegistry::~AssetRegistry() {
 // =============================================================================
 
 SDL_Texture* AssetRegistry::get(TextureID id) const {
-    return m_textures[static_cast<int>(id)];
+    return this->m_textures[static_cast<int>(id)];
 }
 
 // =============================================================================
@@ -66,64 +66,64 @@ SDL_Texture* AssetRegistry::get(TextureID id) const {
 
 SDL_Texture* AssetRegistry::makePlayer() {
     // 32 wide × 48 tall — a typical humanoid aspect ratio (2:3)
-    SDL_Surface* s = createSurface(32, 48);
+    SDL_Surface* s = this->createSurface(32, 48);
     if (!s) return nullptr;
 
     // Body — solid red-orange, same colour as the old placeholder rect
-    fillRect(s, nullptr, 220, 80, 60);
+    this->fillRect(s, nullptr, 220, 80, 60);
 
     // Helmet / head — slightly lighter band across the top 12 rows
     SDL_Rect head { 2, 2, 28, 12 };
-    fillRect(s, &head, 240, 110, 80);
+    this->fillRect(s, &head, 240, 110, 80);
 
     // Belt — dark stripe across the middle to break up the silhouette
     SDL_Rect belt { 0, 28, 32, 4 };
-    fillRect(s, &belt, 160, 50, 40);
+    this->fillRect(s, &belt, 160, 50, 40);
 
     // Boots — darker strip at the bottom
     SDL_Rect boots { 0, 42, 32, 6 };
-    fillRect(s, &boots, 140, 50, 30);
+    this->fillRect(s, &boots, 140, 50, 30);
 
     LOG_DEBUG("AssetRegistry: Player texture painted (32x48)");
-    return upload(s);
+    return this->upload(s);
 }
 
 SDL_Texture* AssetRegistry::makePlayerEye() {
-    // 8×8 white square — drawn on top of the player body in Game::render()
+    // 8×8 white square — drawn on top of the player body in render()
     // to indicate facing direction (offset left or right depending on m_facingRight)
-    SDL_Surface* s = createSurface(8, 8);
+    SDL_Surface* s = this->createSurface(8, 8);
     if (!s) return nullptr;
 
-    fillRect(s, nullptr, 255, 255, 255);
+    this->fillRect(s, nullptr, 255, 255, 255);
 
     // Small dark pupil in the centre to make it look like an actual eye
     SDL_Rect pupil { 2, 2, 4, 4 };
-    fillRect(s, &pupil, 30, 30, 30);
+    this->fillRect(s, &pupil, 30, 30, 30);
 
     LOG_DEBUG("AssetRegistry: PlayerEye texture painted (8x8)");
-    return upload(s);
+    return this->upload(s);
 }
 
 SDL_Texture* AssetRegistry::makeTileGround() {
     // 16×16 — standard tile size for the world grid
-    SDL_Surface* s = createSurface(16, 16);
+    SDL_Surface* s = this->createSurface(16, 16);
     if (!s) return nullptr;
 
     // Base fill — dark earthy green
-    fillRect(s, nullptr, 60, 90, 60);
+    this->fillRect(s, nullptr, 60, 90, 60);
 
     // Top highlight strip — lighter green, gives the tile a "grass top" look
     SDL_Rect topStrip { 0, 0, 16, 3 };
-    fillRect(s, &topStrip, 100, 160, 80);
+    this->fillRect(s, &topStrip, 100, 160, 80);
 
     // Subtle corner pixels — dark, simulates ambient occlusion between tiles
     SDL_Rect tlCorner { 0, 0, 1, 1 };
     SDL_Rect trCorner { 15, 0, 1, 1 };
-    fillRect(s, &tlCorner, 40, 65, 40);
-    fillRect(s, &trCorner, 40, 65, 40);
+    this->fillRect(s, &tlCorner, 40, 65, 40);
+    this->fillRect(s, &trCorner, 40, 65, 40);
 
     LOG_DEBUG("AssetRegistry: TileGround texture painted (16x16)");
-    return upload(s);
+    return this->upload(s);
 }
 
 // =============================================================================
@@ -158,7 +158,7 @@ SDL_Texture* AssetRegistry::upload(SDL_Surface* surf) {
     // SDL_CreateTextureFromSurface copies the pixel data from CPU RAM to GPU
     // VRAM. After this call the surface is no longer needed — free it
     // immediately to avoid holding two copies of the pixel data in memory.
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(m_renderer, surf);
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(this->m_renderer, surf);
     SDL_FreeSurface(surf);  // always free even if tex creation failed
 
     if (!tex)

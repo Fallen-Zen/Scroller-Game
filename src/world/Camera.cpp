@@ -14,8 +14,8 @@ Camera::Camera(int viewW, int viewH, int worldW, int worldH)
     , m_worldW(worldW), m_worldH(worldH)
 {
     // Start at the top-left of the world so the first frame isn't blank.
-    m_x = m_ox = 0.f;
-    m_y = m_oy = 0.f;
+    this->m_x = this->m_ox = 0.f;
+    this->m_y = this->m_oy = 0.f;
 }
 
 // =============================================================================
@@ -25,13 +25,13 @@ Camera::Camera(int viewW, int viewH, int worldW, int worldH)
 void Camera::update(float targetX, float targetY, double dt) {
     // Save current position before moving — render() will blend between
     // (m_ox, m_oy) and (m_x, m_y) using the frame's alpha value.
-    m_ox = m_x;
-    m_oy = m_y;
+    this->m_ox = this->m_x;
+    this->m_oy = this->m_y;
 
     // Compute where the camera wants to be: centred on the target.
     // Subtract half the viewport so the target lands in the middle of the screen.
-    float desiredX = targetX - static_cast<float>(m_viewW) * 0.5f;
-    float desiredY = targetY - static_cast<float>(m_viewH) * 0.5f;
+    float desiredX = targetX - static_cast<float>(this->m_viewW) * 0.5f;
+    float desiredY = targetY - static_cast<float>(this->m_viewH) * 0.5f;
 
     // Lerp (exponential smoothing): each tick we close a fraction of the
     // remaining gap. The fraction is (LERP_SPEED × dt).
@@ -42,16 +42,16 @@ void Camera::update(float targetX, float targetY, double dt) {
     // After ~0.5s the camera has covered >95% of a large pan — feels snappy
     // but not jarring. Tune LERP_SPEED in Camera.h to taste.
     float t = static_cast<float>(LERP_SPEED * dt);
-    m_x += (desiredX - m_x) * t;
-    m_y += (desiredY - m_y) * t;
+    this->m_x += (desiredX - this->m_x) * t;
+    this->m_y += (desiredY - this->m_y) * t;
 
-    clamp();
+    this->clamp();
 }
 
 void Camera::snapTo(float targetX, float targetY) {
-    m_x  = m_ox = targetX - static_cast<float>(m_viewW) * 0.5f;
-    m_y  = m_oy = targetY - static_cast<float>(m_viewH) * 0.5f;
-    clamp();
+    this->m_x  = this->m_ox = targetX - static_cast<float>(this->m_viewW) * 0.5f;
+    this->m_y  = this->m_oy = targetY - static_cast<float>(this->m_viewH) * 0.5f;
+    this->clamp();
 }
 
 // =============================================================================
@@ -61,27 +61,27 @@ void Camera::snapTo(float targetX, float targetY) {
 float Camera::interpX(double alpha) const {
     // Blend between previous and current position using the render alpha.
     // This is identical to how the player position is interpolated in render().
-    return static_cast<float>(m_ox + (m_x - m_ox) * alpha);
+    return static_cast<float>(this->m_ox + (this->m_x - this->m_ox) * alpha);
 }
 
 float Camera::interpY(double alpha) const {
-    return static_cast<float>(m_oy + (m_y - m_oy) * alpha);
+    return static_cast<float>(this->m_oy + (this->m_y - this->m_oy) * alpha);
 }
 
 int Camera::screenOffsetX(double alpha) const {
-    return static_cast<int>(interpX(alpha));
+    return static_cast<int>(this->interpX(alpha));
 }
 
 int Camera::screenOffsetY(double alpha) const {
-    return static_cast<int>(interpY(alpha));
+    return static_cast<int>(this->interpY(alpha));
 }
 
 int Camera::toScreenX(float worldX, double alpha) const {
-    return static_cast<int>(worldX - interpX(alpha));
+    return static_cast<int>(worldX - this->interpX(alpha));
 }
 
 int Camera::toScreenY(float worldY, double alpha) const {
-    return static_cast<int>(worldY - interpY(alpha));
+    return static_cast<int>(worldY - this->interpY(alpha));
 }
 
 // =============================================================================
@@ -93,9 +93,9 @@ void Camera::clamp() {
     // Prevent the camera from showing past the right or bottom either.
     // The right/bottom boundary is worldSize - viewportSize: if the world is
     // 3200px wide and the viewport is 1280px, the camera's max X is 1920.
-    float maxX = static_cast<float>(m_worldW - m_viewW);
-    float maxY = static_cast<float>(m_worldH - m_viewH);
+    float maxX = static_cast<float>(this->m_worldW - this->m_viewW);
+    float maxY = static_cast<float>(this->m_worldH - this->m_viewH);
 
-    m_x = std::clamp(m_x, 0.f, maxX);
-    m_y = std::clamp(m_y, 0.f, maxY);
+    this->m_x = std::clamp(this->m_x, 0.f, maxX);
+    this->m_y = std::clamp(this->m_y, 0.f, maxY);
 }

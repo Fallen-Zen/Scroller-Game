@@ -17,7 +17,7 @@ InputManager::InputManager() {
     int found = 0;
     for (int i = 0; i < SDL_NumJoysticks(); ++i) {
         if (SDL_IsGameController(i)) {
-            openController(i);
+            this->openController(i);
             found++;
             break; // single-player game — one controller is enough
         }
@@ -30,9 +30,9 @@ InputManager::~InputManager() {
     // SDL_GameControllerClose releases the handle and its underlying joystick.
     // Forgetting this leaks the device — on some platforms it also prevents
     // other apps from using the controller after the game exits.
-    if (m_controller) {
-        SDL_GameControllerClose(m_controller);
-        m_controller = nullptr;
+    if (this->m_controller) {
+        SDL_GameControllerClose(this->m_controller);
+        this->m_controller = nullptr;
     }
 }
 
@@ -49,15 +49,15 @@ void InputManager::handleEvent(const SDL_Event& e) {
         // the key has been held for a moment. We ignore repeats so isPressed()
         // fires exactly once per physical key press, not continuously.
         if (e.key.repeat == 0) {
-            int idx = keyToAction(e.key.keysym.sym);
-            if (idx >= 0) press(idx);
+            int idx = this->keyToAction(e.key.keysym.sym);
+            if (idx >= 0) this->press(idx);
         }
         break;
 
     case SDL_KEYUP:
         {
-            int idx = keyToAction(e.key.keysym.sym);
-            if (idx >= 0) release(idx);
+            int idx = this->keyToAction(e.key.keysym.sym);
+            if (idx >= 0) this->release(idx);
         }
         break;
 
@@ -65,16 +65,16 @@ void InputManager::handleEvent(const SDL_Event& e) {
     case SDL_CONTROLLERBUTTONDOWN:
         {
             auto btn = static_cast<SDL_GameControllerButton>(e.cbutton.button);
-            int idx  = buttonToAction(btn);
-            if (idx >= 0) press(idx);
+            int idx  = this->buttonToAction(btn);
+            if (idx >= 0) this->press(idx);
         }
         break;
 
     case SDL_CONTROLLERBUTTONUP:
         {
             auto btn = static_cast<SDL_GameControllerButton>(e.cbutton.button);
-            int idx  = buttonToAction(btn);
-            if (idx >= 0) release(idx);
+            int idx  = this->buttonToAction(btn);
+            if (idx >= 0) this->release(idx);
         }
         break;
 
@@ -96,11 +96,11 @@ void InputManager::handleEvent(const SDL_Event& e) {
             // Fire press/release only when the state actually changes.
             // Without this guard we'd call press() every motion event even if
             // the stick was already past the deadzone — spamming justPressed.
-            if (wantsLeft  && !m_state[leftIdx].held)  press(leftIdx);
-            if (!wantsLeft &&  m_state[leftIdx].held)  release(leftIdx);
+            if (wantsLeft  && !this->m_state[leftIdx].held)  this->press(leftIdx);
+            if (!wantsLeft &&  this->m_state[leftIdx].held)  this->release(leftIdx);
 
-            if (wantsRight  && !m_state[rightIdx].held) press(rightIdx);
-            if (!wantsRight &&  m_state[rightIdx].held) release(rightIdx);
+            if (wantsRight  && !this->m_state[rightIdx].held) this->press(rightIdx);
+            if (!wantsRight &&  this->m_state[rightIdx].held) this->release(rightIdx);
         }
         break;
 
@@ -108,24 +108,24 @@ void InputManager::handleEvent(const SDL_Event& e) {
     case SDL_CONTROLLERDEVICEADDED:
         // Only connect if we don't already have one. e.cdevice.which is the
         // joystick device index (not the instance ID).
-        if (!m_controller)
-            openController(e.cdevice.which);
+        if (!this->m_controller)
+            this->openController(e.cdevice.which);
         break;
 
     case SDL_CONTROLLERDEVICEREMOVED:
         // e.cdevice.which is the instance ID of the removed device.
         // SDL_GameControllerGetJoystick lets us compare against our handle.
-        if (m_controller) {
-            SDL_Joystick* js = SDL_GameControllerGetJoystick(m_controller);
+        if (this->m_controller) {
+            SDL_Joystick* js = SDL_GameControllerGetJoystick(this->m_controller);
             if (SDL_JoystickInstanceID(js) == e.cdevice.which) {
                 LOG_WARN("Gamepad disconnected — switching to keyboard");
-                SDL_GameControllerClose(m_controller);
-                m_controller = nullptr;
+                SDL_GameControllerClose(this->m_controller);
+                this->m_controller = nullptr;
 
                 // Release any actions that were held via this controller so
                 // the game doesn't get stuck with ghost inputs.
                 for (int i = 0; i < N; ++i)
-                    if (m_state[i].held) release(i);
+                    if (this->m_state[i].held) this->release(i);
             }
         }
         break;
@@ -143,7 +143,7 @@ void InputManager::endFrame() {
     // justPressed and justReleased are one-frame-only signals. Clearing them
     // here (after render, before the next processEvents) ensures they are true
     // for exactly one frame no matter how fast the loop runs.
-    for (auto& s : m_state) {
+    for (auto& s : this->m_state) {
         s.justPressed  = false;
         s.justReleased = false;
     }
@@ -154,15 +154,15 @@ void InputManager::endFrame() {
 // =============================================================================
 
 bool InputManager::isHeld(Action a) const {
-    return m_state[static_cast<int>(a)].held;
+    return this->m_state[static_cast<int>(a)].held;
 }
 
 bool InputManager::isPressed(Action a) const {
-    return m_state[static_cast<int>(a)].justPressed;
+    return this->m_state[static_cast<int>(a)].justPressed;
 }
 
 bool InputManager::isReleased(Action a) const {
-    return m_state[static_cast<int>(a)].justReleased;
+    return this->m_state[static_cast<int>(a)].justReleased;
 }
 
 // =============================================================================
@@ -172,23 +172,23 @@ bool InputManager::isReleased(Action a) const {
 void InputManager::press(int idx) {
     // Guard: if already held, don't overwrite justPressed with a second press.
     // This can happen if two bound keys for the same action are held together.
-    if (!m_state[idx].held) {
-        m_state[idx].held        = true;
-        m_state[idx].justPressed = true;
+    if (!this->m_state[idx].held) {
+        this->m_state[idx].held        = true;
+        this->m_state[idx].justPressed = true;
     }
 }
 
 void InputManager::release(int idx) {
-    if (m_state[idx].held) {
-        m_state[idx].held         = false;
-        m_state[idx].justReleased = true;
+    if (this->m_state[idx].held) {
+        this->m_state[idx].held         = false;
+        this->m_state[idx].justReleased = true;
     }
 }
 
 void InputManager::openController(int deviceIndex) {
-    m_controller = SDL_GameControllerOpen(deviceIndex);
-    if (m_controller)
-        LOG_INFO("Gamepad connected: %s", SDL_GameControllerName(m_controller));
+    this->m_controller = SDL_GameControllerOpen(deviceIndex);
+    if (this->m_controller)
+        LOG_INFO("Gamepad connected: %s", SDL_GameControllerName(this->m_controller));
     else
         LOG_WARN("SDL_GameControllerOpen(%d) failed: %s", deviceIndex, SDL_GetError());
 }

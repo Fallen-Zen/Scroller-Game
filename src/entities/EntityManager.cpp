@@ -8,6 +8,7 @@
 #include "entities/Player.h"
 #include "world/Tilemap.h"
 #include "core/AssetRegistry.h"
+#include "core/AudioManager.h"
 #include "core/Logger.h"
 #include "world/Camera.h"
 #include <SDL.h>
@@ -26,7 +27,7 @@ void EntityManager::add(std::unique_ptr<Entity> entity) {
 // Update
 // =============================================================================
 
-void EntityManager::update(const Tilemap& tilemap, const Player& player, double dt) {
+void EntityManager::update(const Tilemap& tilemap, Player& player, AudioManager& audio, double dt) {
     for (auto& e : this->m_entities) {
         // Save current position as "old" before physics runs.
         // render() will lerp between the saved and the post-update position to
@@ -38,8 +39,7 @@ void EntityManager::update(const Tilemap& tilemap, const Player& player, double 
 
     // ── Hit detection ─────────────────────────────────────────────────────────
     // Only runs while the player's attack box is active. Each overlapping enemy
-    // takes 1 point of damage per tick the boxes intersect. The hit is logged
-    // for debugging — remove the LOG_DEBUG call before shipping.
+    // takes 1 point of damage per tick the boxes intersect.
     if (player.isAttacking()) {
         SDL_Rect hb = player.attackHitbox();
         for (auto& e : this->m_entities) {
@@ -60,10 +60,44 @@ void EntityManager::update(const Tilemap& tilemap, const Player& player, double 
         }
     }
 
+    // ── Contact damage ────────────────────────────────────────────────────────
+    // Any enemy body overlapping the player deals 1 damage. Player iframes
+    // prevent this from firing more than once per IFRAMES_DURATION ticks.
+    {
+        const SDL_Rect ph {
+            static_cast<int>(player.x()),
+            static_cast<int>(player.y()),
+            player.width(),
+            player.height()
+        };
+        for (auto& e : this->m_entities) {
+            Enemy* enemy = dynamic_cast<Enemy*>(e.get());
+            if (enemy && !enemy->isDead()) {
+                const SDL_Rect eh = enemy->hitbox();
+                const bool overlaps =
+                    eh.x        < ph.x + ph.w &&
+                    eh.x + eh.w > ph.x        &&
+                    eh.y        < ph.y + ph.h &&
+                    eh.y + eh.h > ph.y;
+
+                if (overlaps) {
+                    player.takeDamage(1);
+                    LOG_DEBUG("Player hit | hp=%d/%d", player.hp(), player.maxHp());
+                }
+            }
+        }
+    }
+
     // ── Dead entity removal ───────────────────────────────────────────────────
-    // Erase-remove: moves all dead enemies to the end of the vector, then erases
-    // them in one allocation. Safe to call every tick — does nothing when no
-    // enemies are dead.
+    // Play the death sound for each enemy about to be removed, then erase them.
+    // Erase-remove moves dead enemies to the end of the vector and erases in
+    // one allocation. Safe to call every tick — no-op when no enemies are dead.
+    for (auto& e : this->m_entities) {
+        const Enemy* enemy = dynamic_cast<const Enemy*>(e.get());
+        if (enemy && enemy->isDead())
+            audio.play(SoundID::EnemyDeath);
+    }
+
     this->m_entities.erase(
         std::remove_if(this->m_entities.begin(), this->m_entities.end(),
             [](const std::unique_ptr<Entity>& e) {

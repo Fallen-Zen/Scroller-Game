@@ -19,6 +19,7 @@
 
 // Forward declarations — full headers included in Player.cpp only.
 class InputManager;
+class AudioManager;
 
 class Player : public Entity {
 public:
@@ -29,7 +30,8 @@ public:
 
     // startX / startY — initial world position (top-left corner of the AABB).
     // input — the game's InputManager; Player reads it but does not own it.
-    Player(float startX, float startY, const InputManager& input);
+    // audio — the game's AudioManager; Player triggers sounds but does not own it.
+    Player(float startX, float startY, const InputManager& input, AudioManager& audio);
 
     // ── Entity interface ──────────────────────────────────────────────────────
 
@@ -58,9 +60,23 @@ public:
     // when isAttacking() is true.
     SDL_Rect attackHitbox() const;
 
+    // Reduce HP by amount. No-op if currently invincible.
+    void takeDamage(int amount);
+
+    // ── Health ────────────────────────────────────────────────────────────────
+
+    bool isDead()       const { return this->m_hp <= 0; }
+    bool isInvincible() const { return this->m_invincibleTicks > 0; }
+    int  hp()           const { return this->m_hp; }
+    int  maxHp()        const { return this->m_maxHp; }
+
 private:
     // Non-owning reference to the game's shared input state.
     const InputManager& m_input;
+
+    // Non-owning reference to the game's audio system.
+    // Used to trigger jump and attack sounds at the moment they occur.
+    AudioManager& m_audio;
 
     // ── Extended player state ─────────────────────────────────────────────────
 
@@ -82,6 +98,14 @@ private:
     // Ticks remaining in the current attack. Decrements each tick; attack ends at 0.
     int  m_attackTicks = 0;
 
+    // Current and maximum hit points. Game over when m_hp reaches 0.
+    int m_hp    = 5;
+    int m_maxHp = 5;
+
+    // Ticks remaining where the player cannot take damage. Set on hit to
+    // prevent contact damage from draining HP every tick of overlap.
+    int m_invincibleTicks = 0;
+
     // ── Physics constants ─────────────────────────────────────────────────────
 
     // Downward acceleration in px/s². High value gives a snappy, arcade feel.
@@ -95,6 +119,10 @@ private:
 
     // Number of ticks the attack box stays active (~0.1 s at 120 Hz).
     static constexpr int ATTACK_DURATION = 12;
+
+    // Ticks of invincibility after taking a hit (~0.75 s — long enough to
+    // escape contact but short enough to feel punishing).
+    static constexpr int IFRAMES_DURATION = 90;
 
     // Attack box dimensions (pixels). Wider than tall — sword reach is
     // horizontal, not a tall vertical slash.
